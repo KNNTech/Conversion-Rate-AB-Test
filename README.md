@@ -2,7 +2,7 @@
 
 This project simulates and analyzes an A/B test comparing two versions of a web interface. The objective is to assess whether a new version (Version B) significantly improves user conversion compared to the baseline (Version A).
 
-**Live Report**: [View on GitHub Pages](https://knntech.github.io/conversion-rate-ab-test/)
+**Live Report**: [View on GitHub Pages](https://knntech.github.io/Conversion-Rate-AB-Test/)
 
 ## Summary
 
