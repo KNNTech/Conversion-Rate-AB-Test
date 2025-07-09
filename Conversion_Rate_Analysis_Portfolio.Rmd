@@ -1,0 +1,294 @@
+---
+title: "Conversion Rate Analysis: Version A vs. Version B"
+author: "Kat Campise"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: flatly
+    highlight: tango
+    number_sections: true
+    fig_caption: true
+    df_print: tibble
+---
+
+# A/B Test Analysis: Conversion Rate and Engagement Metrics
+
+This project simulates and analyzes an A/B test comparing two versions of a web interface. Using R and tidyverse tools, it evaluates the impact of interface version on user conversion, time spent on site, and page views. This is a portfolio-ready example of data storytelling, visual analysis, and inferential statistics for business decision-making.
+
+Controlled and continuous experimentation, particularly through A/B testing, has become a foundational practice in data-driven decision-making for product development, user experience optimization, and business strategy. A/B testing enables randomized control trials where different user segments are exposed to variations in features, layouts, or algorithms, allowing for causal inference about their impact on target metrics such as conversion or engagement (Kohavi et al., 2007).
+
+Modern best practices emphasize the importance of a clear experimentation framework, incorporating phases such as ideation, metric specification, technical deployment, real-time monitoring, and rigorous analysis (Auer et al., 2021). Scalable experimentation infrastructure supports these phases with automated user assignment, variance reduction techniques, and experiment scheduling to accommodate large volumes of concurrent tests (Fabijan et al., 2018; Kohavi et al., 2007).
+
+However, challenges persist. Organizational culture often resists data-driven overrides of senior stakeholder intuition—a phenomenon referred to as the "HiPPO effect" (Kohavi et al., 2007). Moreover, concerns about statistical validity, ethical considerations (e.g., data privacy, dark patterns), and domain-specific constraints (e.g., mobile apps, social networks) require context-sensitive solutions (Auer et al., 2021). Recent syntheses stress the need for cross-functional collaboration and iterative learning loops in continuous experimentation, positioning it as a socio-technical practice that extends beyond A/B testing alone (Ros & Runeson, 2019).
+
+## Objectives
+
+- Analyze a synthetic A/B test dataset for web interface performance
+- Visualize conversion rates and engagement metrics
+- Use proportion testing and linear modeling to assess statistical significance
+- Demonstrate clean, reproducible R Markdown reporting
+
+## Key Metrics Evaluated
+
+- **Conversion Rate**: Proportion of users converting by version  
+- **Time Spent**: Duration on site in seconds  
+- **Page Views**: Number of pages viewed per user
+
+## Tools & Libraries
+
+- R + R Markdown
+- tidyverse
+- broom
+- ggplot2
+- prop.test / linear models (lm)
+
+## Task
+
+- Simulated a real-world A/B testing scenario
+- Created exploratory visualizations for interpretation
+- Applied statistical tests (2-proportion z-test, linear regression)
+- Delivered a clean, reproducible report using R Markdown
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(broom)
+library(ggplot2)
+library(MASS)
+```
+
+# Set Working Directory and Load Data
+
+**Note:** This analysis uses a synthetic dataset named `Week 4 synthetic_data.csv`, assumed to be located in the same directory as this R Markdown file.
+
+```{r}
+data <- read.csv("Week 4 synthetic_data.csv")
+```
+
+## Data Exploration
+
+The dataset used in this A/B test simulation contains 500 observations across 4 variables, each representing a user’s interaction with one of two versions of a web interface.
+
+- **PageViews**: Count of pages visited per user during their session.  Count of pages visited, simulated from a Poisson distribution with λ ≈ 5, consistent with common navigation patterns in user session data..
+- **TimeSpent**: Duration of session activity per user, measured in minutes. It is exponentially distributed with an average around 7 minutes, consistent with common user engagement patterns on content-based platforms.
+- **Conversion**: A binary outcome variable indicating whether the user converted (1) or not (0). This is the primary outcome metric used to evaluate treatment effectiveness.
+- **Version**: A categorical variable indicating whether the user experienced Version A (control) or Version B (treatment) of the interface.
+
+```{r}
+# Structure and summary
+str(data)
+summary(data)
+
+# Check for missing values
+colSums(is.na(data))
+
+# Summary by version
+data %>%
+  group_by(Version) %>%
+  summarize(
+    n = n(),
+    conversion_rate = mean(Conversion),
+    avg_pageviews = mean(PageViews),
+    avg_timespent = mean(TimeSpent),
+    .groups = "drop"
+  )
+```
+
+## Assess PageViews Distribution
+
+Assessing whether `PageViews` follows a Poisson distribution is important for validating the statistical appropriateness of models that assume discrete event counts with equidispersion (i.e., mean ≈ variance). Poisson-distributed variables are commonly modeled in user behavior analysis when the underlying process represents independent event occurrences over time or space (Cameron & Trivedi, 2013). Evaluating this assumption ensures alignment between the data's empirical properties and any inferential procedures based on Poisson likelihoods.
+
+```{r}
+# Histogram of PageViews
+ggplot(data, aes(x = PageViews)) +
+  geom_histogram(binwidth = 1, fill = "steelblue", color = "white") +
+  labs(
+    title = "Distribution of PageViews",
+    x = "Page Views",
+    y = "Frequency"
+  ) +
+  theme_minimal()
+
+# Mean, variance, and Poisson fit
+pageviews_mean <- mean(data$PageViews)
+pageviews_var  <- var(data$PageViews)
+
+pageviews_mean
+pageviews_var
+
+fit_poisson <- fitdistr(data$PageViews, "poisson")
+fit_poisson
+```
+
+## Data Visualizations
+
+### Conversion Rate by Version
+
+```{r fig.width=6, fig.height=4}
+ggplot(data, aes(x = Version, fill = factor(Conversion))) +
+  geom_bar(position = "fill") +
+  labs(title = "Conversion Rate by Version",
+       y = "Proportion",
+       fill = "Conversion") +
+  scale_y_continuous(labels = scales::percent)
+```
+
+### Distribution of Time Spent
+
+```{r fig.width=6, fig.height=4}
+ggplot(data, aes(x = TimeSpent, fill = Version)) +
+  geom_histogram(binwidth = 1, alpha = 0.6, position = "identity") +
+  labs(title = "Distribution of Time Spent",
+       x = "Time Spent (minutes)",
+       y = "Count")
+```
+
+### Page Views by Version
+
+```{r fig.width=6, fig.height=4}
+ggplot(data, aes(x = Version, y = PageViews)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(title = "Page Views by Version")
+```
+
+# Hypothesis
+
+- **Null Hypothesis (H₀)**: No difference in conversion rates between Version A and Version B.
+- **Alternative Hypothesis (H₁)**: Version B has a higher conversion rate than Version A.
+
+## Hypothesis Test
+
+### Contingency Table and Assumptions
+
+```{r}
+tab <- table(data$Version, data$Conversion)
+successes <- tab[, "1"]
+totals <- rowSums(tab)
+
+assumptions <- tibble(
+  Version   = names(successes),
+  successes = successes,
+  failures  = totals - successes
+)
+assumptions
+```
+
+### Justification for Test
+
+Comparing two proportions (binary outcome: conversion) from two independent groups. Given the sample sizes and the central limit theorem, a two-proportion z-test is appropriate. A **one-sided test** is justified by the directional hypothesis that Version B is better.
+
+### Execute Test
+
+```{r}
+test_result <- prop.test(
+  x = c(successes["B"], successes["A"]),
+  n = c(totals["B"], totals["A"]),
+  alternative = "greater",
+  correct = FALSE
+)
+
+test_result
+tidy(test_result)
+```
+
+## Interpretation
+
+```{r results='asis'}
+cat("Conversion Rate - Version A:", round(test_result$estimate[2], 3), "\n")
+cat("Conversion Rate - Version B:", round(test_result$estimate[1], 3), "\n")
+cat("p-value:", signif(test_result$p.value, 4), "\n")
+```
+
+Since the p-value is far below 0.05, the null hypothesis is rejected. Version B performs significantly better than Version A.
+
+# Full Logistic Regression Model
+
+## Why Run This Model?
+
+While the hypothesis test confirmed that Version B significantly outperforms Version A in terms of conversion rate, it did not account for the possible influence of other behavioral variables like TimeSpent and PageViews. 
+
+To understand whether these additional variables contribute meaningfully to the likelihood of conversion—and whether Version B remains a significant predictor after controlling for them—a multivariable logistic regression is run. 
+
+This model facilitates the following:
+
+- Estimate the independent effect of each predictor.
+- Control for potential confounding variables.
+- Obtain adjusted probabilities of conversion across user behavior and version exposure.
+
+### Model: Conversion ~ TimeSpent + PageViews + Version
+
+```{r}
+model_full <- glm(Conversion ~ TimeSpent + PageViews + Version, data = data, family = binomial)
+summary(model_full)
+```
+
+### Odds Ratios and Confidence Intervals
+
+```{r}
+# Odds ratios
+exp(coef(model_full))
+
+# 95% Confidence Intervals for odds ratios
+exp(confint.default(model_full))
+```
+
+### Predicted Probabilities by Version
+
+```{r fig.width=6, fig.height=4}
+# Generate prediction data by Version
+pred_data <- data %>%
+  group_by(Version) %>%
+  summarize(
+    PageViews = mean(PageViews),
+    TimeSpent = mean(TimeSpent),
+    .groups = "drop"
+  )
+
+pred_data$predicted_prob <- predict(model_full, newdata = pred_data, type = "response")
+
+# Bar plot of predicted conversion probabilities
+ggplot(pred_data, aes(x = Version, y = predicted_prob, fill = Version)) +
+  geom_col(width = 0.5) +
+  labs(title = "Predicted Conversion Probability by Version",
+       y = "Predicted Probability",
+       x = "Version") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_minimal()
+```
+
+# Interpretation of Results
+
+The full logistic regression model provides insights into how each variable affects the probability of conversion, after adjusting for all others.
+
+- **TimeSpent**: The coefficient is slightly negative and not statistically significant (p = 0.33). This confirms earlier findings that more time on the site does not meaningfully increase the likelihood of conversion.
+- **PageViews**: Also not statistically significant (p ≈ 0.999). The number of pages viewed does not appear to influence conversion.
+- **VersionB**: The only statistically significant predictor (p = 0.001). Being exposed to Version B of the algorithm increases the log-odds of conversion by 0.937, or equivalently, increases the odds of conversion by a factor of `exp(0.937) ≈ 2.55`.
+
+**Conclusion**: After adjusting for user behavior (TimeSpent and PageViews), the version of the recommendation algorithm remains the only meaningful factor influencing conversion. This further validates the earlier hypothesis test, reinforcing that Version B drives significantly better outcomes.
+
+## Conclusion and Recommendations
+
+This A/B test simulation compared two variants of a web interface to evaluate their impact on user behavior, specifically focusing on conversion rate, time spent on site, and number of page views. The analysis combined exploratory visualizations with inferential statistics to draw data-driven conclusions.
+
+- Statistical Recommendation: The results indicate that Version B demonstrates a statistically significant improvement in conversion rate relative to Version A. Based on this analysis, Version B should be deployed as the default product recommendation engine.
+
+- Business Impact: The observed uplift suggests a potential increase in conversion of up to 10 percentage points, which can translate into substantial revenue gains depending on user volume and average order value. While time on site and page view metrics showed variation between groups, the evidence was not strong enough to infer a meaningful difference, suggesting that the primary benefit of Version B lies in its ability to drive conversions.
+
+- Strategic Guidance: This experiment was conducted in a simulated environment. Therefore, it is strongly recommended to validate these findings in a real production setting. A follow-up test using a live audience and production data will help ensure the observed uplift is reproducible and robust across user segments.
+
+- Broader Implications: This analysis exemplifies the value of controlled experimentation as a business intelligence tool. By embedding A/B testing into the product development lifecycle, organizations can reduce decision-making bias, challenge assumptions (including those of senior stakeholders), and foster a culture of iterative, evidence-based improvement.
+
+# References
+
+Auer, F., Ros, R., Kaltenbrunner, L., Runeson, P., & Felderer, M. (2021). Controlled experimentation in continuous experimentation: Knowledge and challenges. Information and Software Technology, 135, 106565. https://doi.org/10.1016/j.infsof.2021.106551
+
+Cameron, A. C., & Trivedi, P. K. (2013). Regression analysis of count data (2nd ed.). Cambridge University Press. https://doi.org/10.1017/CBO9781139013567
+
+Fabijan, A., Olsson, H. H., & Bosch, J. (2018). Online controlled experimentation at scale: An empirical survey on A/B testing. In 44th Euromicro Conference on Software Engineering and Advanced Applications (SEAA) (pp. 68–75). IEEE. https://doi.org/10.1109/SEAA.2018.00021
+
+Kohavi, R., Henne, R. M., & Sommerfield, D. (2007). Practical guide to controlled experiments on the web: Listen to your customers not to the HiPPO. In Proceedings of the 13th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining (pp. 959–967). https://doi.org/10.1145/1281192.1281295
+
+Ros, R., & Runeson, P. (2019). Continuous experimentation and A/B testing: A mapping study. Empirical Software Engineering, 24(3), 1107–1154. https://doi.org/10.1145/3194760.3194766
+
